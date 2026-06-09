@@ -1,82 +1,64 @@
 # session-continuity
 
-Claude has no memory between sessions. You spend the first few minutes of every new session re-explaining the codebase, the branch, the decisions, and what comes next.
+Pick up where you left off across Claude Code sessions — zero re-explanation.
 
-session-continuity fixes that — automatically.
+## What it does
 
-```bash
-claude mcp add session-continuity npx session-continuity
-```
+Every time a Claude Code session ends, `session-continuity` writes a snapshot of what you were working on, what decisions were made, and what's next. When a new session starts, Claude reads that snapshot automatically and picks up in context.
 
-Open a project in Claude Code and start working. That's it.
+As of **v0.1.7**, snapshots are also saved before context compaction — so even long mid-session conversations don't lose state when Claude Code compresses the context window.
 
----
-
-## How it works
-
-Claude calls four MCP tools — you do nothing.
-
-| Tool | When | What it does |
-|---|---|---|
-| `load_session` | Session start | Restores context — status, decisions, next steps, branch |
-| `save_session` | Session end | Captures an AI-generated snapshot of what happened |
-| `pin_decision` | During session | Records key architectural choices that never expire |
-| `list_projects` | On demand | Shows all projects with session history |
-
-One-time setup. Claude handles the rest automatically, every session.
-
----
-
-## What's captured
-
-Every snapshot is an AI-generated briefing written to `.claude/session.md`:
-
-```markdown
-## Session — 2026-06-05 | feat/auth
-
-Status: JWT refresh token flow — middleware done, route in progress.
-
-Decisions made:
-- httpOnly cookies (not localStorage) — prevents XSS
-- 15-min access token TTL
-
-Next steps:
-- Wire /auth/refresh route
-- Add token rotation on refresh
-
-Blockers: None
-```
-
-- **Git state** — branch, status, recent commits
-- **Status narrative** — one sentence on where things stand
-- **Decisions + why** — key choices made this session with reasoning
-- **Next steps** — ordered, most important first
-- **Pinned decisions** — architectural choices that survive the rolling window
-
-Up to 3 sessions are kept. Older sessions roll off. Pinned decisions never expire.
-
----
-
-## CLI (setup and management)
+## Install
 
 ```bash
-sc status    # show what's saved for this project
-sc rotate    # force a snapshot before a crash or force-quit
+npm install -g session-continuity
 ```
 
----
-
-## Pairs with Waypoint
-
-Session continuity captures *where you left off*. [Waypoint](https://github.com/explorenav-dev/waypoint-mcp) captures *where you are in the process* — across 14 guided development steps from first idea to ship.
-
-Together: Claude knows both what was being worked on and where it sits in the dev journey. No manual briefing, ever.
+## Setup (one-time per project)
 
 ```bash
-claude mcp add waypoint npx @waycraft/waypoint-mcp
+cd your-project
+sc init
 ```
 
----
+This:
+- Creates `.claude/session.md` (the rolling session store)
+- Adds `@.claude/session.md` to `CLAUDE.md` so Claude reads it on startup
+- Registers `Stop` and `PreCompact` hooks in `.claude/settings.json` so snapshots are written automatically
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `sc init` | Wire up a project (run once) |
+| `sc snapshot` | Write a snapshot now |
+| `sc status` | Show current session state |
+| `sc decide "<why>"` | Pin a permanent decision that survives the rolling window |
+| `sc rotate` | Manual snapshot before force-quit |
+| `sc clear` | Reset all session history |
+
+## How snapshots work
+
+Snapshots are written automatically — you don't need to do anything.
+
+- **On session end** (`Stop` hook): captures git state + a narrative summary via `claude -p`
+- **Before context compaction** (`PreCompact` hook, new in v0.1.7): captures state before Claude Code compresses the context window mid-session
+- The last 3 sessions are kept in a rolling window in `.claude/session.md`
+- Pinned decisions (via `sc decide`) persist permanently, outside the rolling window
+
+## MCP server
+
+`session-continuity` also ships an MCP server for cross-project context access:
+
+```bash
+sc-mcp
+```
+
+Add it to your Claude Code config to load session context from any project via the `load_session`, `save_session`, `pin_decision`, and `list_projects` tools.
+
+## What gets committed
+
+`.claude/session.md` is excluded from git by default (it's personal, machine-local state). `.claude/settings.json` (the hooks config) should be committed so your whole team gets the hooks.
 
 ## Feedback & Discussion
 
@@ -84,6 +66,6 @@ Something didn't work, felt missing, or you found a better workflow?
 
 → [GitHub Discussions](https://github.com/explorenav-dev/session-continuity/discussions)
 
----
+## License
 
-Free. Works with Claude Code. No configuration required.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal use.
